@@ -1,0 +1,100 @@
+3c3
+<  * 
+---
+>  *
+5,6c5,6
+<  * 
+<  *   This program is free software; you can redistribute it and/or modify 
+---
+>  *
+>  *   This program is free software; you can redistribute it and/or modify
+9,12c9,12
+<  * 
+<  *   This program is distributed in the hope that it will be useful, but 
+<  *   WITHOUT ANY WARRANTY; without even the implied warranty of 
+<  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU 
+---
+>  *
+>  *   This program is distributed in the hope that it will be useful, but
+>  *   WITHOUT ANY WARRANTY; without even the implied warranty of
+>  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+14,16c14,16
+<  * 
+<  *   You should have received a copy of the GNU General Public License 
+<  *   along with this program; if not, write to the Free Software 
+---
+>  *
+>  *   You should have received a copy of the GNU General Public License
+>  *   along with this program; if not, write to the Free Software
+18c18
+<  *   The full GNU General Public License is included in this distribution 
+---
+>  *   The full GNU General Public License is included in this distribution
+20c20
+<  * 
+---
+>  *
+23c23
+<  * 
+---
+>  *
+43a44,47
+> #define PCI_VENDOR_ID_IVSHMEM   0x1AF4
+> #define PCI_DEVICE_ID_IVSHMEM   0x1110
+> #define BAR2                    2
+> #define HUGEPAGE_SIZE           (1<<30)
+86a91
+> static void *kern_va_pci_region_start = NULL; /* virtual address of hugepage */
+96a102,103
+> 	phys_addr_t bus_addr_pci_region_start = 0;
+> 	struct pci_dev *ivshm_dev = NULL;
+110c117,130
+< 	KNI_PRINT("######## DPDK kni module loaded  ########\n");
+---
+> 	KNI_PRINT("######## Remapping huge page   ########\n");
+> 
+> 	/* For use in this virtualised enviroment, where the shared memory
+> 	 * is mapped in as a pci device, we need to make sure the driver is
+> 	 * operating on the correct address. Rather than use phys_to_virt, we
+> 	 * pass down a physical address offset through the IOCTL, remap the
+> 	 * bus address to a kernel virtual address, then add the offset to
+> 	 * the kva to get each memzones kernel virtual address.
+> 	 */
+> 	ivshm_dev = pci_get_device(PCI_VENDOR_ID_IVSHMEM, PCI_DEVICE_ID_IVSHMEM, NULL);
+> 	if(ivshm_dev == NULL) {
+> 		KNI_PRINT("Could not find device\n");
+> 		return -ENODEV;
+> 	}
+111a132,136
+> 	bus_addr_pci_region_start = pci_resource_start(ivshm_dev, BAR2);
+> 	KNI_DBG("Bus hugepage start is %llx\n", bus_addr_pci_region_start);
+> 	kern_va_pci_region_start = ioremap(bus_addr_pci_region_start, HUGEPAGE_SIZE);
+> 	KNI_DBG("KVA hugepage start is %p\n", kern_va_pci_region_start);
+> 	KNI_PRINT("######## DPDK kni module loaded  ########\n");
+118a144
+> 	iounmap(kern_va_pci_region_start);
+255,258c281,285
+< 	kni->tx_q = phys_to_virt(dev_info.tx_phys);
+< 	kni->rx_q = phys_to_virt(dev_info.rx_phys);
+< 	kni->alloc_q = phys_to_virt(dev_info.alloc_phys);
+< 	kni->free_q = phys_to_virt(dev_info.free_phys);
+---
+> 	/* Note, we treat dev_info.tx_phys as an offset */
+> 	kni->tx_q = ((uint8_t *)kern_va_pci_region_start + dev_info.tx_phys);
+> 	kni->rx_q = ((uint8_t *)kern_va_pci_region_start + dev_info.rx_phys);
+> 	kni->alloc_q = ((uint8_t *)kern_va_pci_region_start + dev_info.alloc_phys);
+> 	kni->free_q = ((uint8_t *)kern_va_pci_region_start + dev_info.free_phys);
+260,261c287,288
+< 	kni->req_q = phys_to_virt(dev_info.req_phys);
+< 	kni->resp_q = phys_to_virt(dev_info.resp_phys);
+---
+> 	kni->req_q = ((uint8_t *)kern_va_pci_region_start + dev_info.req_phys);
+> 	kni->resp_q = ((uint8_t *)kern_va_pci_region_start + dev_info.resp_phys);
+264c291
+< 	kni->sync_kva = phys_to_virt(dev_info.sync_phys);
+---
+> 	kni->sync_kva = ((uint8_t *)kern_va_pci_region_start + dev_info.sync_phys);
+266c293
+< 	kni->mbuf_kva = phys_to_virt(dev_info.mbuf_phys);
+---
+> 	kni->mbuf_kva = ((uint8_t *)kern_va_pci_region_start + dev_info.mbuf_phys);
